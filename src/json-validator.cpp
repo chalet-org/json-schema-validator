@@ -72,7 +72,7 @@ class schema_ref : public schema
 		if (target)
 			target->validate(ptr, instance, patch, e);
 		else
-			e.error(ptr, instance, "unresolved or freed schema-reference " + id_);
+			e.error(ptr, instance, error_descriptor::schema_ref_unresolved, id_);
 	}
 
 	const json &defaultValue(const json::json_pointer &ptr, const json &instance, error_handler &e) const override
@@ -82,7 +82,7 @@ class schema_ref : public schema
 		if (target)
 			return target->defaultValue(ptr, instance, e);
 		else
-			e.error(ptr, instance, "unresolved or freed schema-reference " + id_);
+			e.error(ptr, instance, error_descriptor::schema_ref_unresolved, id_);
 
 		return EmptyDefault;
 	}
@@ -286,20 +286,22 @@ public:
 	              const json_uri &initial) const
 	{
 		if (!root_) {
-			e.error(ptr, "", "no root schema has yet been set for validating an instance");
+			e.error(ptr, "", error_descriptor::no_root_schema_set);
 			return;
 		}
 
 		auto file_entry = files_.find(initial.location());
 		if (file_entry == files_.end()) {
-			e.error(ptr, "", "no file found serving requested root-URI. " + initial.location());
+			// e.error(ptr, "", "no file found serving requested root-URI. " + initial.location());
+			e.error(ptr, "", error_descriptor::no_root_schema_set);
 			return;
 		}
 
 		auto &file = file_entry->second;
 		auto sch = file.schemas.find(initial.fragment());
 		if (sch == file.schemas.end()) {
-			e.error(ptr, "", "no schema find for request initial URI: " + initial.to_string());
+			// e.error(ptr, "", "no schema find for request initial URI: " + initial.to_string());
+			e.error(ptr, "", error_descriptor::no_root_schema_set);
 			return;
 		}
 
@@ -319,16 +321,18 @@ public:
 	bool error_{false};
 	json::json_pointer ptr_;
 	json instance_;
-	std::string message_;
+	error_descriptor type_;
+	std::any data_;
 
-	void error(const json::json_pointer &ptr, const json &instance, const std::string &message) override
+	void error(const json::json_pointer &ptr, const json &instance, const error_descriptor type, std::any data = std::any{}) override
 	{
 		if (*this)
 			return;
 		error_ = true;
 		ptr_ = ptr;
 		instance_ = instance;
-		message_ = message;
+		type_ = type;
+		data_ = std::move(data);
 	}
 
 	operator bool() const { return error_; }
@@ -344,7 +348,7 @@ class logical_not : public schema
 		subschema_->validate(ptr, instance, patch, esub);
 
 		if (!esub)
-			e.error(ptr, instance, "the subschema has succeeded, but it is required to not validate");
+			e.error(ptr, instance, error_descriptor::logical_not);
 	}
 
 	const json &defaultValue(const json::json_pointer &ptr, const json &instance, error_handler &e) const override
@@ -390,7 +394,7 @@ class logical_combination : public schema
 		// could accumulate esub details for anyOf and oneOf, but not clear how to select which subschema failure to report
 		// or how to report multiple such failures
 		if (count == 0)
-			e.error(ptr, instance, "no subschema has succeeded, but one of them is required to validate");
+			e.error(ptr, instance, error_descriptor::logical_combination);
 	}
 
 	// specialized for each of the logical_combination_types
@@ -423,7 +427,7 @@ template <>
 bool logical_combination<allOf>::is_validate_complete(const json &, const json::json_pointer &, error_handler &e, const first_error_handler &esub, size_t)
 {
 	if (esub)
-		e.error(esub.ptr_, esub.instance_, "at least one subschema has failed, but all of them are required to validate - " + esub.message_);
+		e.error(esub.ptr_, esub.instance_, error_descriptor::logical_combination_all_of, std::pair<error_descriptor, std::any>{esub.type_, esub.data_});
 	return esub;
 }
 
@@ -437,7 +441,7 @@ template <>
 bool logical_combination<oneOf>::is_validate_complete(const json &instance, const json::json_pointer &ptr, error_handler &e, const first_error_handler &, size_t count)
 {
 	if (count > 1)
-		e.error(ptr, instance, "more than one subschema has succeeded, but exactly one of them is required to validate");
+		e.error(ptr, instance, error_descriptor::logical_combination_one_of);
 	return count > 1;
 }
 
@@ -469,7 +473,7 @@ class type_schema : public schema
 		if (type)
 			type->validate(ptr, instance, patch, e);
 		else
-			e.error(ptr, instance, "unexpected instance type");
+			e.error(ptr, instance, error_descriptor::type_instance_unexpected_type);
 
 		if (enum_.first) {
 			bool seen_in_enum = false;
@@ -480,12 +484,12 @@ class type_schema : public schema
 				}
 
 			if (!seen_in_enum)
-				e.error(ptr, instance, "instance not found in required enum");
+				e.error(ptr, instance, error_descriptor::type_instance_not_found_in_required_enum);
 		}
 
 		if (const_.first &&
 		    const_.second != instance)
-			e.error(ptr, instance, "instance not const");
+			e.error(ptr, instance, error_descriptor::type_instance_not_const);
 
 		for (auto l : logic_)
 			l->validate(ptr, instance, patch, e);
@@ -658,32 +662,28 @@ class string : public schema
 	{
 		if (minLength_.first) {
 			if (utf8_length(instance) < minLength_.second) {
-				std::ostringstream s;
-				s << "instance is too short as per minLength:" << minLength_.second;
-				e.error(ptr, instance, s.str());
+				e.error(ptr, instance, error_descriptor::string_min_length, minLength_.second);
 			}
 		}
 
 		if (maxLength_.first) {
 			if (utf8_length(instance) > maxLength_.second) {
-				std::ostringstream s;
-				s << "instance is too long as per maxLength: " << maxLength_.second;
-				e.error(ptr, instance, s.str());
+				e.error(ptr, instance, error_descriptor::string_max_length, maxLength_.second);
 			}
 		}
 
 		if (std::get<0>(content_)) {
 			if (root_->content_check() == nullptr)
-				e.error(ptr, instance, std::string("a content checker was not provided but a contentEncoding or contentMediaType for this string have been present: '") + std::get<1>(content_) + "' '" + std::get<2>(content_) + "'");
+				e.error(ptr, instance, error_descriptor::string_content_checker_not_provided, std::pair<std::string, std::string>{std::get<1>(content_), std::get<2>(content_)});
 			else {
 				try {
 					root_->content_check()(std::get<1>(content_), std::get<2>(content_), instance);
 				} catch (const std::exception &ex) {
-					e.error(ptr, instance, std::string("content-checking failed: ") + ex.what());
+					e.error(ptr, instance, error_descriptor::string_content_checker_failed, std::string(ex.what()));
 				}
 			}
 		} else if (instance.type() == json::value_t::binary) {
-			e.error(ptr, instance, "expected string, but get binary data");
+			e.error(ptr, instance, error_descriptor::string_expected_found_binary_data);
 		}
 
 		if (instance.type() != json::value_t::string) {
@@ -693,17 +693,17 @@ class string : public schema
 #ifndef NO_STD_REGEX
 		if (pattern_.first &&
 		    !REGEX_NAMESPACE::regex_search(instance.get<std::string>(), pattern_.second))
-			e.error(ptr, instance, "instance does not match regex pattern: " + patternString_);
+			e.error(ptr, instance, error_descriptor::string_regex_pattern_mismatch, patternString_);
 #endif
 
 		if (format_.first) {
 			if (root_->format_check() == nullptr)
-				e.error(ptr, instance, std::string("a format checker was not provided but a format keyword for this string is present: ") + format_.second);
+				e.error(ptr, instance, error_descriptor::string_format_checker_not_provided, format_.second);
 			else {
 				try {
 					root_->format_check()(format_.second, instance);
 				} catch (const std::exception &ex) {
-					e.error(ptr, instance, std::string("format-checking failed: ") + ex.what());
+					e.error(ptr, instance, error_descriptor::string_format_checker_failed, std::string(ex.what()));
 				}
 			}
 		}
@@ -802,17 +802,17 @@ class numeric : public schema
 
 		if (multipleOf_.first && value != 0) // zero is multiple of everything
 			if (violates_multiple_of(value))
-				e.error(ptr, instance, "instance is not a multiple of " + std::to_string(multipleOf_.second));
+				e.error(ptr, instance, error_descriptor::numeric_multiple_of, multipleOf_.second);
 
 		if (maximum_.first)
 			if ((exclusiveMaximum_ && value >= maximum_.second) ||
 			    value > maximum_.second)
-				e.error(ptr, instance, "instance exceeds maximum of " + std::to_string(maximum_.second));
+				e.error(ptr, instance, error_descriptor::numeric_exceeds_maximum, maximum_.second);
 
 		if (minimum_.first)
 			if ((exclusiveMinimum_ && value <= minimum_.second) ||
 			    value < minimum_.second)
-				e.error(ptr, instance, "instance is below minimum of " + std::to_string(minimum_.second));
+				e.error(ptr, instance, error_descriptor::numeric_below_minimum, minimum_.second);
 	}
 
 public:
@@ -858,7 +858,7 @@ class null : public schema
 	void validate(const json::json_pointer &ptr, const json &instance, json_patch &, error_handler &e) const override
 	{
 		if (!instance.is_null())
-			e.error(ptr, instance, "expected to be null");
+			e.error(ptr, instance, error_descriptor::null_found_non_null);
 	}
 
 public:
@@ -885,11 +885,11 @@ class boolean : public schema
 			//switch (instance.type()) {
 			//case json::value_t::array:
 			//	if (instance.size() != 0) // valid false-schema
-			//		e.error(ptr, instance, "false-schema required empty array");
+			//		e.error(ptr, instance, error_descriptor::boolean_false_schema_required_empty_array);
 			//	return;
 			//}
 
-			e.error(ptr, instance, "instance invalid as per false-schema");
+			e.error(ptr, instance, error_descriptor::boolean_invalid_per_false_schema);
 		}
 	}
 
@@ -906,7 +906,7 @@ class required : public schema
 	{
 		for (auto &r : required_)
 			if (instance.find(r) == instance.end())
-				e.error(ptr, instance, "required property '" + r + "' not found in object as a dependency");
+				e.error(ptr, instance, error_descriptor::required_property_not_found, r);
 	}
 
 public:
@@ -933,14 +933,14 @@ class object : public schema
 	void validate(const json::json_pointer &ptr, const json &instance, json_patch &patch, error_handler &e) const override
 	{
 		if (maxProperties_.first && instance.size() > maxProperties_.second)
-			e.error(ptr, instance, "too many properties");
+			e.error(ptr, instance, error_descriptor::object_too_many_properties);
 
 		if (minProperties_.first && instance.size() < minProperties_.second)
-			e.error(ptr, instance, "too few properties");
+			e.error(ptr, instance, error_descriptor::object_too_few_properties);
 
 		for (auto &r : required_)
 			if (instance.find(r) == instance.end())
-				e.error(ptr, instance, "required property '" + r + "' not found in object");
+				e.error(ptr, instance, error_descriptor::object_required_property_not_found, r);
 
 		// for each property in instance
 		for (auto &p : instance.items()) {
@@ -969,7 +969,7 @@ class object : public schema
 				first_error_handler additional_prop_err;
 				additionalProperties_->validate(ptr / p.key(), p.value(), patch, additional_prop_err);
 				if (additional_prop_err)
-					e.error(ptr, instance, "validation failed for additional property '" + p.key() + "': " + additional_prop_err.message_);
+					e.error(ptr, instance, error_descriptor::object_additional_property_failed, std::tuple<error_descriptor, std::any, std::string>{additional_prop_err.type_, std::move(additional_prop_err.data_), p.key()});
 			}
 		}
 
@@ -1085,16 +1085,16 @@ class array : public schema
 	void validate(const json::json_pointer &ptr, const json &instance, json_patch &patch, error_handler &e) const override
 	{
 		if (maxItems_.first && instance.size() > maxItems_.second)
-			e.error(ptr, instance, "array has too many items");
+			e.error(ptr, instance, error_descriptor::array_too_many_items);
 
 		if (minItems_.first && instance.size() < minItems_.second)
-			e.error(ptr, instance, "array has too few items");
+			e.error(ptr, instance, error_descriptor::array_too_few_items);
 
 		if (uniqueItems_) {
 			for (auto it = instance.cbegin(); it != instance.cend(); ++it) {
 				auto v = std::find(it + 1, instance.end(), *it);
 				if (v != instance.end())
-					e.error(ptr, instance, "items have to be unique for this array");
+					e.error(ptr, instance, error_descriptor::array_items_must_be_unique);
 			}
 		}
 
@@ -1133,7 +1133,7 @@ class array : public schema
 				}
 			}
 			if (!contained)
-				e.error(ptr, instance, "array does not contain required element as per 'contains'");
+				e.error(ptr, instance, error_descriptor::array_does_not_contain_required_element_per_contains);
 		}
 	}
 
@@ -1297,8 +1297,9 @@ std::shared_ptr<schema> schema::make(json &schema,
 
 class throwing_error_handler : public error_handler
 {
-	void error(const json::json_pointer &ptr, const json &instance, const std::string &message) override
+	void error(const json::json_pointer &ptr, const json &instance, const error_descriptor type, std::any data = std::any{}) override
 	{
+		std::string message = error_descriptor_type_to_string(type, data);
 		throw std::invalid_argument(std::string("At ") + ptr.to_string() + " of " + instance.dump() + " - " + message + "\n");
 	}
 };
@@ -1307,6 +1308,140 @@ class throwing_error_handler : public error_handler
 
 namespace nlohmann
 {
+std::string json_schema::error_descriptor_type_to_string(const error_descriptor type, const std::any &data)
+{
+	switch (type) {
+	case error_descriptor::schema_ref_unresolved:
+		return "unresolved or freed schema-reference " + std::any_cast<std::string>(data);
+
+	case error_descriptor::no_root_schema_set:
+		return "no root schema has yet been set for validating an instance";
+
+	case error_descriptor::logical_not:
+		return "the subschema has succeeded, but it is required to not validate";
+
+	case error_descriptor::logical_combination:
+		return "no subschema has succeeded, but one of them is required to validate";
+
+	case error_descriptor::logical_combination_all_of: {
+		auto msg = std::any_cast<std::pair<error_descriptor, std::any>>(data);
+		return "at least one subschema has failed, but all of them are required to validate - " + error_descriptor_type_to_string(msg.first, std::move(msg.second));
+	}
+
+	case error_descriptor::logical_combination_any_of:
+		break;
+
+	case error_descriptor::logical_combination_one_of:
+		return "more than one subschema has succeeded, but exactly one of them is required to validate";
+
+	case error_descriptor::type_instance_unexpected_type:
+		return "unexpected instance type";
+
+	case error_descriptor::type_instance_not_found_in_required_enum:
+		return "instance not found in required enum";
+
+	case error_descriptor::type_instance_not_const:
+		return "instance not const";
+
+	case error_descriptor::string_min_length: {
+		const std::size_t min_length = std::any_cast<std::size_t>(data);
+		return "instance is too short as per minLength:" + std::to_string(min_length);
+	}
+
+	case error_descriptor::string_max_length: {
+		const std::size_t max_length = std::any_cast<std::size_t>(data);
+		return "instance is too long as per maxLength:" + std::to_string(max_length);
+	}
+
+	case error_descriptor::string_content_checker_not_provided: {
+		auto sub_data = std::any_cast<std::pair<std::string, std::string>>(data);
+		return "a content checker was not provided but a contentEncoding or contentMediaType for this string have been present: '" + sub_data.first + "' '" + sub_data.second + "'";
+	}
+
+	case error_descriptor::string_content_checker_failed:
+		return "content-checking failed: " + std::any_cast<std::string>(data);
+
+	case error_descriptor::string_expected_found_binary_data:
+		return "expected string, but get binary data";
+
+	case error_descriptor::string_regex_pattern_mismatch:
+		return "instance does not match regex pattern: " + std::any_cast<std::string>(data);
+
+	case error_descriptor::string_format_checker_not_provided:
+		return "a format checker was not provided but a format keyword for this string is present: " + std::any_cast<std::string>(data);
+
+	case error_descriptor::string_format_checker_failed:
+		return "format-checking failed: " + std::any_cast<std::string>(data);
+
+	case error_descriptor::numeric_multiple_of: {
+		auto multiple = std::any_cast<json::number_float_t>(data);
+		return "instance is not a multiple of " + std::to_string(multiple);
+	}
+
+	case error_descriptor::numeric_exceeds_maximum: {
+		auto maximum = std::any_cast<json::number_float_t>(data);
+		return "instance exceeds maximum of " + std::to_string(maximum);
+	}
+
+	case error_descriptor::numeric_below_minimum: {
+		auto minimum = std::any_cast<json::number_float_t>(data);
+		return "instance is below minimum of " + std::to_string(minimum);
+	}
+
+	case error_descriptor::null_found_non_null:
+		return "expected to be null";
+
+		// case error_descriptor::boolean_false_schema_required_empty_array:
+		// 	return "false-schema required empty array";
+
+	case error_descriptor::boolean_invalid_per_false_schema:
+		return "instance invalid as per false-schema";
+
+	case error_descriptor::required_property_not_found: {
+		auto property = std::any_cast<std::string>(data);
+		return "required property '" + property + "' not found in object as a dependency";
+	}
+
+	case error_descriptor::object_too_many_properties:
+		return "too many properties";
+
+	case error_descriptor::object_too_few_properties:
+		return "too few properties";
+
+	case error_descriptor::object_required_property_not_found: {
+		auto property = std::any_cast<std::string>(data);
+		return "required property '" + property + "' not found in object";
+	}
+
+	case error_descriptor::object_additional_property_failed: {
+		const auto msg = std::any_cast<std::tuple<error_descriptor, std::any, std::string>>(data);
+
+		const auto sub_error = std::any_cast<error_descriptor>(std::get<0>(msg));
+		const auto &key = std::get<2>(msg);
+
+		return "validation failed for additional property '" + key + "': " + error_descriptor_type_to_string(sub_error, std::move(std::get<1>(msg)));
+	}
+
+	case error_descriptor::array_too_many_items:
+		return "array has too many items";
+
+	case error_descriptor::array_too_few_items:
+		return "array has too few items";
+
+	case error_descriptor::array_items_must_be_unique:
+		return "items have to be unique for this array";
+
+	case error_descriptor::array_does_not_contain_required_element_per_contains:
+		return "array does not contain required element as per 'contains'";
+
+	case error_descriptor::none:
+	default:
+		break;
+	}
+
+	return "unhandled error" + std::to_string(static_cast<std::underlying_type<error_descriptor>::type>(type));
+}
+
 namespace json_schema
 {
 
