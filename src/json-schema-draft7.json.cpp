@@ -6,7 +6,7 @@
  * SPDX-License-Identifier: MIT
  *
  */
-#include <nlohmann/json.hpp>
+#include "json-schema-include.hpp"
 
 namespace nlohmann
 {

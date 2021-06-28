@@ -1,4 +1,4 @@
-#include <nlohmann/json.hpp>
+#include "json-schema-include.hpp"
 
 #include <nlohmann/json-schema.hpp>
 

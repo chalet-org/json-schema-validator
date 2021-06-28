@@ -2,7 +2,8 @@
 
 #include <iostream>
 #include <nlohmann/json-schema.hpp>
-#include <nlohmann/json.hpp>
+
+#include "json-schema-include.hpp"
 
 static int error_count = 0;
 
