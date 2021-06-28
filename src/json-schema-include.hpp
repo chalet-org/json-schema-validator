@@ -1,5 +1,7 @@
 #pragma once
 
+#define JSONSV_UNUSED(var) static_cast<void>(var)
+
 #if (defined(__cpp_exceptions) || defined(__EXCEPTIONS) || defined(_CPPUNWIND))
 	#ifndef JSONSV_EXCEPTIONS
 		#define JSONSV_EXCEPTIONS

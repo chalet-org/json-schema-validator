@@ -1305,7 +1305,13 @@ class throwing_error_handler : public error_handler
 	void error(const json::json_pointer &ptr, const json &instance, const error_descriptor type, std::any data = std::any{}) override
 	{
 		std::string message = error_descriptor_type_to_string(type, data);
+	#if defined(JSONSV_EXCEPTIONS)
 		JSONSV_THROW(std::invalid_argument(std::string("At ") + ptr.to_string() + " of " + instance.dump() + " - " + message + "\n"));
+	#else
+		JSONSV_UNUSED(ptr);
+		JSONSV_UNUSED(instance);
+		std::abort();
+	#endif
 	}
 };
 
