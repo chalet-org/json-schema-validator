@@ -8,6 +8,8 @@
  */
 #include <nlohmann/json-schema.hpp>
 
+#include <json-schema-include.hpp>
+
 #include <fstream>
 #include <iostream>
 
@@ -26,11 +28,11 @@ static void loader(const json_uri &uri, json &schema)
 	std::string filename = "./" + uri.path();
 	std::ifstream lf(filename);
 	if (!lf.good())
-		throw std::invalid_argument("could not open " + uri.url() + " tried with " + filename);
-	try {
+		JSONSV_THROW(std::invalid_argument("could not open " + uri.url() + " tried with " + filename));
+	JSONSV_TRY {
 		lf >> schema;
-	} catch (const std::exception &e) {
-		throw e;
+	} JSONSV_CATCH(const std::exception &e) {
+		JSONSV_THROW(e);
 	}
 }
 
@@ -56,10 +58,12 @@ int main(int argc, char *argv[])
 
 	// 1) Read the schema for the document you want to validate
 	json schema;
-	try {
+	JSONSV_TRY {
 		f >> schema;
-	} catch (const std::exception &e) {
+	} JSONSV_CATCH(const std::exception &e) {
+	#if defined(JSONSV_EXCEPTIONS)
 		std::cerr << e.what() << " at " << f.tellg() << " - while parsing the schema\n";
+	#endif
 		return EXIT_FAILURE;
 	}
 
@@ -67,22 +71,26 @@ int main(int argc, char *argv[])
 	json_validator validator(loader,
 							 nlohmann::json_schema::default_string_format_check);
 
-	try {
+	JSONSV_TRY {
 		// insert this schema as the root to the validator
 		// this resolves remote-schemas, sub-schemas and references via the given loader-function
 		validator.set_root_schema(schema);
-	} catch (const std::exception &e) {
+	} JSONSV_CATCH(const std::exception &e) {
 		std::cerr << "setting root schema failed\n";
+	#if defined(JSONSV_EXCEPTIONS)
 		std::cerr << e.what() << "\n";
+	#endif
 	}
 
 	// 3) do the actual validation of the document
 	json document;
 
-	try {
+	JSONSV_TRY {
 		std::cin >> document;
-	} catch (const std::exception &e) {
+	} JSONSV_CATCH(const std::exception &e) {
+	#if defined(JSONSV_EXCEPTIONS)
 		std::cerr << "json parsing failed: " << e.what() << " at offset: " << std::cin.tellg() << "\n";
+	#endif
 		return EXIT_FAILURE;
 	}
 

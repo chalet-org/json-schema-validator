@@ -2,6 +2,8 @@
 
 #include <nlohmann/json-schema.hpp>
 
+#include <json-schema-include.hpp>
+
 using nlohmann::json;
 using nlohmann::json_schema::json_validator;
 
@@ -26,28 +28,32 @@ static void uri_format_checker(const std::string &format, const std::string &val
 {
 	if (format == "uri") {
 		if (value.find("://") == std::string::npos)
-			throw std::invalid_argument("URI does not contain :// - invalid");
+			JSONSV_THROW(std::invalid_argument("URI does not contain :// - invalid"));
 	} else
-		throw std::logic_error("Don't know how to validate " + format);
+		JSONSV_THROW(std::logic_error("Don't know how to validate " + format));
 }
 
 int main()
 {
 	json_validator validator(nullptr, uri_format_checker); // create validator
 
-	try {
+	JSONSV_TRY {
 		validator.set_root_schema(uri_schema); // insert root-schema
-	} catch (const std::exception &e) {
+	} JSONSV_CATCH(const std::exception &e) {
+	#if defined(JSONSV_EXCEPTIONS)
 		std::cerr << "Validation of schema failed, here is why: " << e.what() << "\n";
+	#endif
 		return EXIT_FAILURE;
 	}
 
 	validator.validate(good_uri);
 
-	try {
+	JSONSV_TRY {
 		validator.validate(bad_uri);
-	} catch (const std::exception &e) {
+	} JSONSV_CATCH(const std::exception &e) {
+	#if defined(JSONSV_EXCEPTIONS)
 		std::cerr << "Validation expectedly failed, here is why: " << e.what() << "\n";
+	#endif
 	}
 
 	return EXIT_SUCCESS;

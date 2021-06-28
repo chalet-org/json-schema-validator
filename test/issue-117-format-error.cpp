@@ -4,14 +4,16 @@
 #include "nlohmann/json.hpp"
 #include <iostream>
 
+#include <json-schema-include.hpp>
+
 static int error_count = 0;
 
 #define CHECK_THROW(x, msg)                \
 	{                                      \
 		bool fail = false;                 \
-		try {                              \
+		JSONSV_TRY {                       \
 			x;                             \
-		} catch (std::exception &) {       \
+		} JSONSV_CATCH(std::exception &) { \
 			fail = true;                   \
 		}                                  \
 		if (fail == false) {               \
@@ -24,9 +26,9 @@ static int error_count = 0;
 	{                                                                 \
 		bool fail = false;                                            \
 		std::string exception_error;                                  \
-		try {                                                         \
+		JSONSV_TRY {                                                  \
 			x;                                                        \
-		} catch (std::exception & e) {                                \
+		} JSONSV_CATCH(std::exception & e) {                          \
 			fail = true;                                              \
 			exception_error = e.what();                               \
 		}                                                             \

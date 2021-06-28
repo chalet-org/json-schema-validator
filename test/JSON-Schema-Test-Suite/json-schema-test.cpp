@@ -8,6 +8,8 @@
  */
 #include <nlohmann/json-schema.hpp>
 
+#include <json-schema-include.hpp>
+
 #include <fstream>
 #include <iostream>
 #include <regex>
@@ -30,12 +32,12 @@ static void loader(const json_uri &uri, json &schema)
 
 	std::fstream s(fn.c_str());
 	if (!s.good())
-		throw std::invalid_argument("could not open " + uri.url() + " for schema loading\n");
+		JSONSV_THROW(std::invalid_argument("could not open " + uri.url() + " for schema loading\n"));
 
-	try {
+	JSONSV_TRY {
 		s >> schema;
-	} catch (std::exception &e) {
-		throw e;
+	} JSONSV_CATCH(std::exception &e) {
+		JSONSV_THROW(e);
 	}
 }
 
@@ -56,7 +58,7 @@ static std::string base64_decode(const std::string &in)
 			break;
 
 		if (T[c] == -1) {
-			throw std::invalid_argument("base64-decode: unexpected character in encode string: '" + std::string(1, c) + "'");
+			JSONSV_THROW(std::invalid_argument("base64-decode: unexpected character in encode string: '" + std::string(1, c) + "'"));
 		}
 		val = (val << 6) + T[c];
 		valb += 6;
@@ -75,22 +77,24 @@ static void content(const std::string &contentEncoding, const std::string &conte
 	if (contentEncoding == "base64")
 		content = base64_decode(instance);
 	else if (contentEncoding != "")
-		throw std::invalid_argument("unable to check for contentEncoding '" + contentEncoding + "'");
+		JSONSV_THROW(std::invalid_argument("unable to check for contentEncoding '" + contentEncoding + "'"));
 
 	if (contentMediaType == "application/json")
 		auto dummy = json::parse(content); // throws if conversion fails
 	else if (contentMediaType != "")
-		throw std::invalid_argument("unable to check for contentMediaType '" + contentMediaType + "'");
+		JSONSV_THROW(std::invalid_argument("unable to check for contentMediaType '" + contentMediaType + "'"));
 }
 
 int main(void)
 {
 	json validation; // a validation case following the JSON-test-suite-schema
 
-	try {
+	JSONSV_TRY {
 		std::cin >> validation;
-	} catch (std::exception &e) {
+	} JSONSV_CATCH(std::exception &e) {
+	#if defined(JSONSV_EXCEPTIONS)
 		std::cout << e.what() << "\n";
+	#endif
 		return EXIT_FAILURE;
 	}
 
@@ -116,19 +120,25 @@ int main(void)
 
 			bool valid = true;
 
-			try {
+			JSONSV_TRY {
 				validator.validate(test_case["data"]);
-			} catch (const std::out_of_range &e) {
+			} JSONSV_CATCH(const std::out_of_range &e) {
 				valid = false;
+			#if defined(JSONSV_EXCEPTIONS)
 				std::cout << "    Test Case Exception (out of range): " << e.what() << "\n";
+			#endif
 
-			} catch (const std::invalid_argument &e) {
+			} JSONSV_CATCH(const std::invalid_argument &e) {
 				valid = false;
+			#if defined(JSONSV_EXCEPTIONS)
 				std::cout << "    Test Case Exception (invalid argument): " << e.what() << "\n";
+			#endif
 
-			} catch (const std::logic_error &e) {
+			} JSONSV_CATCH(const std::logic_error &e) {
 				valid = !test_case["valid"]; /* force test-case failure */
+			#if defined(JSONSV_EXCEPTIONS)
 				std::cout << "    Not yet implemented: " << e.what() << "\n";
+			#endif
 			}
 
 			if (valid == test_case["valid"])

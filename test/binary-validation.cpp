@@ -18,9 +18,9 @@ static int error_count = 0;
 #define EXPECT_THROW(foo)            \
 	{                                \
 		bool ok = false;             \
-		try {                        \
+		JSONSV_TRY {                        \
 			foo;                     \
-		} catch (std::exception &) { \
+		} JSONSV_CATCH(std::exception &) { \
 			ok = true;               \
 		}                            \
 		if (ok == false) {           \
@@ -98,11 +98,11 @@ static void content(const std::string &contentEncoding, const std::string &conte
 
 	if (contentEncoding == "binary") {
 		if (instance.type() != json::value_t::binary) {
-			throw std::invalid_argument{"expected binary data"};
+			JSONSV_THROW(std::invalid_argument{"expected binary data"});
 		}
 	} else {
 		if (instance.type() == json::value_t::binary) {
-			throw std::invalid_argument{"expected string, but get binary"};
+			JSONSV_THROW(std::invalid_argument{"expected string, but get binary"});
 		}
 	}
 }

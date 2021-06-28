@@ -1,6 +1,6 @@
-#include "json-schema-include.hpp"
-
 #include <nlohmann/json-schema.hpp>
+
+#include "json-schema-include.hpp"
 
 #include <iostream>
 

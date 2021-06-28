@@ -8,13 +8,11 @@
 	#define JSONSV_THROW(exception) throw exception
 	#define JSONSV_TRY try
 	#define JSONSV_CATCH(exception) catch (exception)
-	#define JSONSV_EXCEPT_ERROR(...) Diagnostic::error(__VA_ARGS__);
 #else
 	#include <cstdlib>
 	#define JSONSV_THROW(exception) std::abort()
 	#define JSONSV_TRY if (true)
 	#define JSONSV_CATCH(exception) if (false)
-	#define JSONSV_EXCEPT_ERROR(...)
 #endif
 
 #if !defined(JSONSV_EXCEPTIONS)

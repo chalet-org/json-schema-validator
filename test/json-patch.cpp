@@ -1,14 +1,16 @@
 #include "../src/json-patch.hpp"
 
+#include <json-schema-include.hpp>
+
 #include <iostream>
 
 using nlohmann::json_patch;
 
 #define OK(code)                                                    \
 	do {                                                            \
-		try {                                                       \
+		JSONSV_TRY {                                                       \
 			code;                                                   \
-		} catch (const std::exception &e) {                         \
+		} JSONSV_CATCH(const std::exception &e) {                         \
 			std::cerr << "UNEXPECTED FAILED: " << e.what() << "\n"; \
 			return 1;                                               \
 		}                                                           \
@@ -16,11 +18,11 @@ using nlohmann::json_patch;
 
 #define KO(code)                                                \
 	do {                                                        \
-		try {                                                   \
+		JSONSV_TRY {                                                   \
 			code;                                               \
 			std::cerr << "UNEXPECTED SUCCESS.\n";               \
 			return 1;                                           \
-		} catch (const std::exception &e) {                         \
+		} JSONSV_CATCH(const std::exception &e) {                         \
 			std::cerr << "EXPECTED FAIL: " << e.what() << "\n"; \
 		}                                                       \
 	} while (0)

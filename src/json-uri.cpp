@@ -8,6 +8,8 @@
  */
 #include <nlohmann/json-schema.hpp>
 
+#include "json-schema-include.hpp"
+
 #include <sstream>
 
 namespace nlohmann
@@ -78,7 +80,7 @@ void json_uri::update(const std::string &uri)
 
 			// URNs cannot of have paths
 			if (urn_.size() && path.size())
-				throw std::invalid_argument("Cannot add a path (" + path + ") to an URN URI (" + urn_ + ")");
+				JSONSV_THROW(std::invalid_argument("Cannot add a path (" + path + ") to an URN URI (" + urn_ + ")"));
 
 			if (path[0] == '/') // if it starts with a / it is root-path
 				path_ = path;

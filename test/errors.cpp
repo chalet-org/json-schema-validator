@@ -2,6 +2,8 @@
 
 #include <iostream>
 
+#include <json-schema-include.hpp>
+
 static int error_count;
 
 #define EXPECT_EQ(a, b)                                              \
@@ -74,10 +76,12 @@ int main(void)
 {
 	json_validator validator;
 
-	try {
+	JSONSV_TRY {
 		validator.set_root_schema(person_schema); // insert root-schema
-	} catch (const std::exception &e) {
+	} JSONSV_CATCH(const std::exception &e) {
+	#if defined(JSONSV_EXCEPTIONS)
 		std::cerr << "Validation of schema failed, here is why: " << e.what() << "\n";
+	#endif
 		return EXIT_FAILURE;
 	}
 

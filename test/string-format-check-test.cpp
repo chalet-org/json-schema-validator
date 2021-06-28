@@ -1,6 +1,8 @@
 #include <iostream>
 
 #include <nlohmann/json-schema.hpp>
+#include <json-schema-include.hpp>
+
 
 /** @return number of failed tests */
 size_t
@@ -12,7 +14,7 @@ testStringFormat(const std::string &format,
 	for (auto stringValid = stringValidTests.begin(); stringValid != stringValidTests.end(); ++stringValid) {
 		std::cout << "[INFO] Testing " << format << ": " << stringValid->first << "\n";
 
-		try {
+		JSONSV_TRY {
 			nlohmann::json_schema::default_string_format_check(format, stringValid->first);
 
 			if (!stringValid->second) {
@@ -20,7 +22,7 @@ testStringFormat(const std::string &format,
 				std::cerr << "[ERROR] String with " << format << " format '" << stringValid->first
 				          << "' validated even though it should NOT!\n";
 			}
-		} catch (std::exception &exception) {
+		} JSONSV_CATCH(std::exception &exception) {
 			std::cout << "[INFO] Validation failed with: " << exception.what() << "\n";
 			if (stringValid->second) {
 				++numberOfErrors;

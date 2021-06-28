@@ -1,4 +1,5 @@
 #include <nlohmann/json-schema.hpp>
+#include <json-schema-include.hpp>
 
 #include <iostream>
 
@@ -10,10 +11,12 @@ int main(void)
 	validator.set_root_schema(schema_json);
 
 	validator.validate(1);
-	try {
+	JSONSV_TRY {
 		validator.validate("\"1\"");
-	} catch (const std::exception &e) {
+	} JSONSV_CATCH(const std::exception &e) {
+	#if defined(JSONSV_EXCEPTIONS)
 		std::cerr << "expected exception: " << e.what() << "\n";
+	#endif
 		return EXIT_SUCCESS;
 	}
 	return EXIT_FAILURE;

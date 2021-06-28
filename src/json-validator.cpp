@@ -9,6 +9,7 @@
 #include <nlohmann/json-schema.hpp>
 
 #include "json-patch.hpp"
+#include "json-schema-include.hpp"
 
 #include <deque>
 #include <memory>
@@ -147,7 +148,7 @@ public:
 		auto &file = get_or_create_file(uri.location());
 		auto sch = file.schemas.lower_bound(uri.fragment());
 		if (sch != file.schemas.end() && !(file.schemas.key_comp()(uri.fragment(), sch->first))) {
-			throw std::invalid_argument("schema with " + uri.to_string() + " already inserted");
+			JSONSV_THROW(std::invalid_argument("schema with " + uri.to_string() + " already inserted"));
 			return;
 		}
 
@@ -217,14 +218,14 @@ public:
 		// an unknown keyword can only be referenced by a json-pointer,
 		// not by a plain name fragment
 		if (uri.pointer() != "") {
-			try {
+			JSONSV_TRY {
 				auto &subschema = file.unknown_keywords.at(uri.pointer()); // null is returned if not existing
 				auto s = schema::make(subschema, this, {}, {{uri}});       //  A JSON Schema MUST be an object or a boolean.
 				if (s) {                                                   // nullptr if invalid schema, e.g. null
 					file.unknown_keywords.erase(uri.fragment());
 					return s;
 				}
-			} catch (nlohmann::detail::out_of_range &) { // at() did not find it
+			} JSONSV_CATCH(nlohmann::detail::out_of_range &) { // at() did not find it
 			}
 		}
 
@@ -263,7 +264,7 @@ public:
 						schema::make(loaded_schema, this, {}, {{loc}});
 						new_schema_loaded = true;
 					} else {
-						throw std::invalid_argument("external schema reference '" + loc + "' needs loading, but no loader callback given");
+						JSONSV_THROW(std::invalid_argument("external schema reference '" + loc + "' needs loading, but no loader callback given"));
 					}
 				}
 			}
@@ -274,9 +275,9 @@ public:
 
 		for (const auto &file : files_)
 			if (file.second.unresolved.size() != 0)
-				throw std::invalid_argument("after all files have been parsed, '" +
+				JSONSV_THROW(std::invalid_argument("after all files have been parsed, '" +
 				                            (file.first == "" ? "<root>" : file.first) +
-				                            "' has still undefined references.");
+				                            "' has still undefined references."));
 	}
 
 	void validate(const json::json_pointer &ptr,
@@ -676,10 +677,12 @@ class string : public schema
 			if (root_->content_check() == nullptr)
 				e.error(ptr, instance, error_descriptor::string_content_checker_not_provided, std::pair<std::string, std::string>{std::get<1>(content_), std::get<2>(content_)});
 			else {
-				try {
+				JSONSV_TRY {
 					root_->content_check()(std::get<1>(content_), std::get<2>(content_), instance);
-				} catch (const std::exception &ex) {
+				} JSONSV_CATCH(const std::exception &ex) {
+				#if defined(JSONSV_EXCEPTIONS)
 					e.error(ptr, instance, error_descriptor::string_content_checker_failed, std::string(ex.what()));
+				#endif
 				}
 			}
 		} else if (instance.type() == json::value_t::binary) {
@@ -700,10 +703,12 @@ class string : public schema
 			if (root_->format_check() == nullptr)
 				e.error(ptr, instance, error_descriptor::string_format_checker_not_provided, format_.second);
 			else {
-				try {
+				JSONSV_TRY {
 					root_->format_check()(format_.second, instance);
-				} catch (const std::exception &ex) {
+				} JSONSV_CATCH(const std::exception &ex) {
+				#if defined(JSONSV_EXCEPTIONS)
 					e.error(ptr, instance, error_descriptor::string_format_checker_failed, std::string(ex.what()));
+				#endif
 				}
 			}
 		}
@@ -753,7 +758,7 @@ public:
 		}
 
 		if (std::get<0>(content_) == true && root_->content_check() == nullptr) {
-			throw std::invalid_argument{"schema contains contentEncoding/contentMediaType but content checker was not set"};
+			JSONSV_THROW(std::invalid_argument{"schema contains contentEncoding/contentMediaType but content checker was not set"});
 		}
 
 #ifndef NO_STD_REGEX
@@ -769,7 +774,7 @@ public:
 		attr = sch.find("format");
 		if (attr != sch.end()) {
 			if (root_->format_check() == nullptr)
-				throw std::invalid_argument{"a format checker was not provided but a format keyword for this string is present: " + format_.second};
+				JSONSV_THROW(std::invalid_argument{"a format checker was not provided but a format keyword for this string is present: " + format_.second});
 
 			format_ = {true, attr.value()};
 			sch.erase(attr);
@@ -1282,7 +1287,7 @@ std::shared_ptr<schema> schema::make(json &schema,
 		schema.erase("title");
 		schema.erase("description");
 	} else {
-		throw std::invalid_argument("invalid JSON-type for a schema for " + uris[0].to_string() + ", expected: boolean or object");
+		JSONSV_THROW(std::invalid_argument("invalid JSON-type for a schema for " + uris[0].to_string() + ", expected: boolean or object"));
 	}
 
 	for (auto &uri : uris) { // for all URIs this schema is referenced by
@@ -1300,7 +1305,7 @@ class throwing_error_handler : public error_handler
 	void error(const json::json_pointer &ptr, const json &instance, const error_descriptor type, std::any data = std::any{}) override
 	{
 		std::string message = error_descriptor_type_to_string(type, data);
-		throw std::invalid_argument(std::string("At ") + ptr.to_string() + " of " + instance.dump() + " - " + message + "\n");
+		JSONSV_THROW(std::invalid_argument(std::string("At ") + ptr.to_string() + " of " + instance.dump() + " - " + message + "\n"));
 	}
 };
 

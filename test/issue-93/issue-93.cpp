@@ -1,5 +1,7 @@
 #include <nlohmann/json-schema.hpp>
 
+#include <json-schema-include.hpp>
+
 #include <fstream>
 #include <iostream>
 
@@ -27,11 +29,11 @@ static void loader(const json_uri &uri, json &schema)
 	std::string filename = "./" + uri.path();
 	std::ifstream lf(filename);
 	if (!lf.good())
-		throw std::invalid_argument("could not open " + uri.url() + " tried with " + filename);
-	try {
+		JSONSV_THROW(std::invalid_argument("could not open " + uri.url() + " tried with " + filename));
+	JSONSV_TRY {
 		lf >> schema;
-	} catch (const std::exception &e) {
-		throw e;
+	} JSONSV_CATCH(const std::exception &e) {
+		JSONSV_THROW(e);
 	}
 }
 

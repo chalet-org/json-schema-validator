@@ -9,6 +9,8 @@
 #include <utility>
 #include <vector>
 
+#include "json-schema-include.hpp"
+
 /**
  * Many of the RegExes are from @see http://jmrware.com/articles/2009/uri_regexp/URI_regex.html
  */
@@ -21,7 +23,7 @@ void range_check(const T value, const T min, const T max)
 	if (!((value >= min) && (value <= max))) {
 		std::stringstream out;
 		out << "Value " << value << " should be in interval [" << min << "," << max << "] but is not!";
-		throw std::invalid_argument(out.str());
+		JSONSV_THROW(std::invalid_argument(out.str()));
 	}
 }
 
@@ -32,7 +34,7 @@ void rfc3339_date_check(const std::string &value)
 
 	std::smatch matches;
 	if (!std::regex_match(value, matches, dateRegex)) {
-		throw std::invalid_argument(value + " is not a date string according to RFC 3339.");
+		JSONSV_THROW(std::invalid_argument(value + " is not a date string according to RFC 3339."));
 	}
 
 	const auto year = std::stoi(matches[1].str());
@@ -58,7 +60,7 @@ void rfc3339_time_check(const std::string &value)
 
 	std::smatch matches;
 	if (!std::regex_match(value, matches, timeRegex)) {
-		throw std::invalid_argument(value + " is not a time string according to RFC 3339.");
+		JSONSV_THROW(std::invalid_argument(value + " is not a time string according to RFC 3339."));
 	}
 
 	const auto hour = std::stoi(matches[1].str());
@@ -124,7 +126,7 @@ void rfc3339_date_time_check(const std::string &value)
 
 	std::smatch matches;
 	if (!std::regex_match(value, matches, dateTimeRegex)) {
-		throw std::invalid_argument(value + " is not a date-time string according to RFC 3339.");
+		JSONSV_THROW(std::invalid_argument(value + " is not a date-time string according to RFC 3339."));
 	}
 
 	rfc3339_date_check(matches[1].str());
@@ -278,28 +280,28 @@ void default_string_format_check(const std::string &format, const std::string &v
 	} else if (format == "email") {
 		static const std::regex emailRegex{email};
 		if (!std::regex_match(value, emailRegex)) {
-			throw std::invalid_argument(value + " is not a valid email according to RFC 5322.");
+			JSONSV_THROW(std::invalid_argument(value + " is not a valid email according to RFC 5322."));
 		}
 	} else if (format == "hostname") {
 		static const std::regex hostRegex{hostname};
 		if (!std::regex_match(value, hostRegex)) {
-			throw std::invalid_argument(value + " is not a valid hostname according to RFC 3986 Appendix A.");
+			JSONSV_THROW(std::invalid_argument(value + " is not a valid hostname according to RFC 3986 Appendix A."));
 		}
 	} else if (format == "ipv4") {
 		const static std::regex ipv4Regex{"^" + ipv4Address + "$"};
 		if (!std::regex_match(value, ipv4Regex)) {
-			throw std::invalid_argument(value + " is not an IPv4 string according to RFC 2673.");
+			JSONSV_THROW(std::invalid_argument(value + " is not an IPv4 string according to RFC 2673."));
 		}
 	} else if (format == "ipv6") {
 		static const std::regex ipv6Regex{ipv6Address};
 		if (!std::regex_match(value, ipv6Regex)) {
-			throw std::invalid_argument(value + " is not an IPv6 string according to RFC 5954.");
+			JSONSV_THROW(std::invalid_argument(value + " is not an IPv6 string according to RFC 5954."));
 		}
 	} else if (format == "regex") {
-		try {
+		JSONSV_TRY {
 			std::regex re(value, std::regex::ECMAScript);
-		} catch (std::exception &exception) {
-			throw exception;
+		} JSONSV_CATCH(std::exception &exception) {
+			JSONSV_THROW(exception);
 		}
 	} else {
 		/* yet unsupported JSON schema draft 7 built-ins */
@@ -307,11 +309,11 @@ void default_string_format_check(const std::string &format, const std::string &v
 		    "date-time", "time", "date", "email", "idn-email", "hostname", "idn-hostname", "ipv4", "ipv6", "uri",
 		    "uri-reference", "iri", "iri-reference", "uri-template", "json-pointer", "relative-json-pointer", "regex"};
 		if (std::find(jsonSchemaStringFormatBuiltIns.begin(), jsonSchemaStringFormatBuiltIns.end(), format) != jsonSchemaStringFormatBuiltIns.end()) {
-			throw std::logic_error("JSON schema string format built-in " + format + " not yet supported. " +
-			                       "Please open an issue or use a custom format checker.");
+			JSONSV_THROW(std::logic_error("JSON schema string format built-in " + format + " not yet supported. " +
+			                       "Please open an issue or use a custom format checker."));
 		}
 
-		throw std::logic_error("Don't know how to validate " + format);
+		JSONSV_THROW(std::logic_error("Don't know how to validate " + format));
 	}
 }
 } // namespace json_schema

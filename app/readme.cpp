@@ -3,6 +3,8 @@
 
 #include <nlohmann/json-schema.hpp>
 
+#include <json-schema-include.hpp>
+
 using nlohmann::json;
 using nlohmann::json_schema::json_validator;
 
@@ -52,10 +54,12 @@ int main()
 
 	json_validator validator; // create validator
 
-	try {
+	JSONSV_TRY {
 		validator.set_root_schema(person_schema); // insert root-schema
-	} catch (const std::exception &e) {
+	} JSONSV_CATCH(const std::exception &e) {
+	#if defined(JSONSV_EXCEPTIONS)
 		std::cerr << "Validation of schema failed, here is why: " << e.what() << "\n";
+	#endif
 		return EXIT_FAILURE;
 	}
 
@@ -64,12 +68,14 @@ int main()
 	for (auto &person : {bad_person, good_person, good_defaulted_person}) {
 		std::cout << "About to validate this person:\n"
 		          << std::setw(2) << person << std::endl;
-		try {
+		JSONSV_TRY {
 			auto defaultPatch = validator.validate(person); // validate the document - uses the default throwing error-handler
 			std::cout << "Validation succeeded\n";
 			std::cout << "Patch with defaults: " << defaultPatch.dump(2) << std::endl;
-		} catch (const std::exception &e) {
+		} JSONSV_CATCH(const std::exception &e) {
+		#if defined(JSONSV_EXCEPTIONS)
 			std::cerr << "Validation failed, here is why: " << e.what() << "\n";
+		#endif
 		}
 	}
 
