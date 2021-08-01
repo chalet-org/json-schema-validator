@@ -2,7 +2,7 @@
 
 #define JSONSV_UNUSED(var) static_cast<void>(var)
 
-#if (defined(__cpp_exceptions) || defined(__EXCEPTIONS) || defined(_CPPUNWIND))
+#if (defined(__cpp_exceptions) || defined(__EXCEPTIONS) || defined(_CPPUNWIND) || !defined(JSONSV_NOEXCEPTION))
 	#ifndef JSONSV_EXCEPTIONS
 		#define JSONSV_EXCEPTIONS
 	#endif
