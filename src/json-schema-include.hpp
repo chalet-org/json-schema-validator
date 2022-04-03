@@ -18,7 +18,9 @@
 #endif
 
 #if !defined(JSONSV_EXCEPTIONS)
-	#define JSON_NOEXCEPTION
+	#if !defined(JSON_NOEXCEPTION)
+		#define JSON_NOEXCEPTION
+	#endif
 #endif
 
 #ifdef _MSC_VER
