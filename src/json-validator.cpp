@@ -440,11 +440,8 @@ bool logical_combination<anyOf>::is_validate_complete(const json &, const json::
 template <>
 bool logical_combination<oneOf>::is_validate_complete(const json &instance, const json::json_pointer &ptr, error_handler &e, const first_error_handler &, size_t count)
 {
-	static_cast<void>(instance);
-	static_cast<void>(ptr);
-	static_cast<void>(e);
-	// if (count > 1)
-	// 	e.error(ptr, instance, error_descriptor::logical_combination_one_of);
+	if (count > 1)
+		e.error(ptr, instance, error_descriptor::logical_combination_one_of);
 	return count > 1;
 }
 
