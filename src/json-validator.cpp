@@ -381,8 +381,10 @@ class logical_combination : public schema
 	{
 		size_t count = 0;
 
+		std::vector<first_error_handler> error_handlers;
+
 		for (auto &s : subschemata_) {
-			first_error_handler esub;
+			auto& esub = error_handlers.emplace_back(first_error_handler{});
 			s->validate(ptr, instance, patch, esub);
 			if (!esub)
 				count++;
@@ -391,14 +393,27 @@ class logical_combination : public schema
 				return;
 		}
 
-		// could accumulate esub details for anyOf and oneOf, but not clear how to select which subschema failure to report
-		// or how to report multiple such failures
+		// Attempt to return the error if the last ref token is different from this one (ie. an inner object node)
+		if (count == 0 && !error_handlers.empty()) {
+			auto& last_ref_token = ptr.back();
+			for (auto& esub : error_handlers) {
+				if (last_ref_token == esub.ptr_.back())
+					continue;
+
+				e.error(esub.ptr_, esub.instance_, esub.type_, std::move(esub.data_));
+				return;
+			}
+
+		}
+
+		// Otherwise return the descriptor if errored
 		if (count == 0)
-			e.error(ptr, instance, error_descriptor::logical_combination);
+			e.error(ptr, instance, descriptor);
 	}
 
 	// specialized for each of the logical_combination_types
 	static const std::string key;
+	static const error_descriptor descriptor;
 	static bool is_validate_complete(const json &, const json::json_pointer &, error_handler &, const first_error_handler &, size_t);
 
 public:
@@ -424,10 +439,15 @@ template <>
 const std::string logical_combination<oneOf>::key = "oneOf";
 
 template <>
-bool logical_combination<allOf>::is_validate_complete(const json &, const json::json_pointer &, error_handler &e, const first_error_handler &esub, size_t)
+const error_descriptor logical_combination<allOf>::descriptor = error_descriptor::logical_combination_all_of;
+template <>
+const error_descriptor logical_combination<anyOf>::descriptor = error_descriptor::logical_combination_any_of;
+template <>
+const error_descriptor logical_combination<oneOf>::descriptor = error_descriptor::logical_combination_one_of;
+
+template <>
+bool logical_combination<allOf>::is_validate_complete(const json &, const json::json_pointer &, error_handler &, const first_error_handler &esub, size_t)
 {
-	if (esub)
-		e.error(esub.ptr_, esub.instance_, error_descriptor::logical_combination_all_of, std::pair<error_descriptor, std::any>{esub.type_, esub.data_});
 	return esub;
 }
 
@@ -438,10 +458,8 @@ bool logical_combination<anyOf>::is_validate_complete(const json &, const json::
 }
 
 template <>
-bool logical_combination<oneOf>::is_validate_complete(const json &instance, const json::json_pointer &ptr, error_handler &e, const first_error_handler &, size_t count)
+bool logical_combination<oneOf>::is_validate_complete(const json &, const json::json_pointer &, error_handler &, const first_error_handler &, size_t count)
 {
-	if (count > 1)
-		e.error(ptr, instance, error_descriptor::logical_combination_one_of);
 	return count > 1;
 }
 
@@ -1329,9 +1347,6 @@ std::string json_schema::error_descriptor_type_to_string(const error_descriptor 
 
 	case error_descriptor::logical_not:
 		return "the subschema has succeeded, but it is required to not validate";
-
-	case error_descriptor::logical_combination:
-		return "no subschema has succeeded, but one of them is required to validate";
 
 	case error_descriptor::logical_combination_all_of: {
 		auto msg = std::any_cast<std::pair<error_descriptor, std::any>>(data);

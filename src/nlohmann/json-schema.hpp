@@ -141,7 +141,6 @@ enum class error_descriptor : std::uint8_t {
 	schema_ref_unresolved,
 	no_root_schema_set,
 	logical_not,
-	logical_combination,
 	logical_combination_all_of,
 	logical_combination_any_of,
 	logical_combination_one_of,
