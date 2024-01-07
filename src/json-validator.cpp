@@ -397,8 +397,15 @@ class logical_combination : public schema
 		if (count == 0 && !error_handlers.empty()) {
 			auto& last_ref_token = ptr.back();
 			for (auto& esub : error_handlers) {
-				if (last_ref_token == esub.ptr_.back())
+				bool is_array = esub.instance_.is_array();
+				if (last_ref_token == esub.ptr_.back() && !is_array)
 					continue;
+
+				if (is_array && esub.instance_.empty()) {
+					// Assume we got here because the array in the error was empty and shouldn't have been
+					e.error(esub.ptr_, esub.instance_, error_descriptor::array_required_not_empty);
+					return;
+				}
 
 				e.error(esub.ptr_, esub.instance_, esub.type_, std::move(esub.data_));
 				return;
@@ -509,7 +516,7 @@ class type_schema : public schema
 		    const_.second != instance)
 			e.error(ptr, instance, error_descriptor::type_instance_not_const);
 
-		for (auto l : logic_)
+		for (auto &l : logic_)
 			l->validate(ptr, instance, patch, e);
 
 		if (if_) {
@@ -1109,8 +1116,12 @@ class array : public schema
 		if (maxItems_.first && instance.size() > maxItems_.second)
 			e.error(ptr, instance, error_descriptor::array_too_many_items);
 
-		if (minItems_.first && instance.size() < minItems_.second)
-			e.error(ptr, instance, error_descriptor::array_too_few_items);
+		if (minItems_.first && instance.size() < minItems_.second) {
+			if (instance.empty())
+				e.error(ptr, instance, error_descriptor::array_required_not_empty);
+			else
+				e.error(ptr, instance, error_descriptor::array_too_few_items);
+		}
 
 		if (uniqueItems_) {
 			for (auto it = instance.cbegin(); it != instance.cend(); ++it) {
@@ -1446,6 +1457,9 @@ std::string json_schema::error_descriptor_type_to_string(const error_descriptor 
 
 		return "validation failed for additional property '" + key + "': " + error_descriptor_type_to_string(sub_error, std::move(std::get<1>(msg)));
 	}
+
+	case error_descriptor::array_required_not_empty:
+		return "array was empty, but requires at least one item";
 
 	case error_descriptor::array_too_many_items:
 		return "array has too many items";

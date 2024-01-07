@@ -166,6 +166,7 @@ enum class error_descriptor : std::uint8_t {
 	object_too_few_properties,
 	object_required_property_not_found,
 	object_additional_property_failed,
+	array_required_not_empty,
 	array_too_many_items,
 	array_too_few_items,
 	array_items_must_be_unique,
