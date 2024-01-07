@@ -315,27 +315,46 @@ public:
 namespace
 {
 
-class first_error_handler : public error_handler
+class logical_error_handler : public error_handler
 {
+	struct error_data
+	{
+		json::json_pointer ptr;
+		const json& instance;
+		error_descriptor type;
+		std::any data;
+	};
+
 public:
-	bool error_{false};
-	json::json_pointer ptr_;
-	json instance_;
-	error_descriptor type_;
-	std::any data_;
+	std::vector<error_data> errors_;
 
 	void error(const json::json_pointer &ptr, const json &instance, const error_descriptor type, std::any data = std::any{}) override
 	{
-		if (*this)
-			return;
-		error_ = true;
-		ptr_ = ptr;
-		instance_ = instance;
-		type_ = type;
-		data_ = std::move(data);
+		for (auto& error : errors_) {
+			if (error.instance == instance)
+				return;
+		}
+		errors_.push_back(error_data{ptr, instance, type, std::move(data),});
 	}
 
-	operator bool() const { return error_; }
+	void get_errors(const std::string &last_ref_token, error_handler &e)
+	{
+		for (auto& esub : errors_) {
+			bool is_array = esub.instance.is_array();
+			if (last_ref_token == esub.ptr.back() && !is_array)
+				continue;
+
+			if (is_array && esub.instance.empty()) {
+				// Assume we got here because the array in the error was empty and shouldn't have been
+				e.error(esub.ptr, esub.instance, error_descriptor::array_required_not_empty);
+			} else if (!is_array) {
+				e.error(esub.ptr, esub.instance, esub.type, std::move(esub.data));
+			}
+		}
+		errors_.clear();
+	}
+
+	operator bool() const { return !errors_.empty(); }
 };
 
 class logical_not : public schema
@@ -344,8 +363,10 @@ class logical_not : public schema
 
 	void validate(const json::json_pointer &ptr, const json &instance, json_patch &patch, error_handler &e) const final
 	{
-		first_error_handler esub;
+		logical_error_handler esub;
 		subschema_->validate(ptr, instance, patch, esub);
+
+		esub.get_errors(ptr.back(), e);
 
 		if (!esub)
 			e.error(ptr, instance, error_descriptor::logical_not);
@@ -381,37 +402,20 @@ class logical_combination : public schema
 	{
 		size_t count = 0;
 
-		std::vector<first_error_handler> error_handlers;
+		logical_error_handler local_errors;
 
 		for (auto &s : subschemata_) {
-			auto& esub = error_handlers.emplace_back(first_error_handler{});
-			s->validate(ptr, instance, patch, esub);
-			if (!esub)
+			s->validate(ptr, instance, patch, local_errors);
+			if (!local_errors)
 				count++;
 
-			if (is_validate_complete(instance, ptr, e, esub, count))
+			if (is_validate_complete(instance, ptr, e, local_errors, count))
 				return;
 		}
 
 		// Attempt to return the error if the last ref token is different from this one (ie. an inner object node)
-		if (count == 0 && !error_handlers.empty()) {
-			auto& last_ref_token = ptr.back();
-			for (auto& esub : error_handlers) {
-				bool is_array = esub.instance_.is_array();
-				if (last_ref_token == esub.ptr_.back() && !is_array)
-					continue;
-
-				if (is_array && esub.instance_.empty()) {
-					// Assume we got here because the array in the error was empty and shouldn't have been
-					e.error(esub.ptr_, esub.instance_, error_descriptor::array_required_not_empty);
-					return;
-				}
-
-				e.error(esub.ptr_, esub.instance_, esub.type_, std::move(esub.data_));
-				return;
-			}
-
-		}
+		if (count == 0 && local_errors)
+			local_errors.get_errors(ptr.back(), e);
 
 		// Otherwise return the descriptor if errored
 		if (count == 0)
@@ -421,7 +425,7 @@ class logical_combination : public schema
 	// specialized for each of the logical_combination_types
 	static const std::string key;
 	static const error_descriptor descriptor;
-	static bool is_validate_complete(const json &, const json::json_pointer &, error_handler &, const first_error_handler &, size_t);
+	static bool is_validate_complete(const json &, const json::json_pointer &, error_handler &, const logical_error_handler &, size_t);
 
 public:
 	logical_combination(json &sch,
@@ -453,21 +457,21 @@ template <>
 const error_descriptor logical_combination<oneOf>::descriptor = error_descriptor::logical_combination_one_of;
 
 template <>
-bool logical_combination<allOf>::is_validate_complete(const json &, const json::json_pointer &, error_handler &, const first_error_handler &esub, size_t)
+bool logical_combination<allOf>::is_validate_complete(const json &, const json::json_pointer &, error_handler &, const logical_error_handler &esub, size_t)
 {
 	return esub;
 }
 
 template <>
-bool logical_combination<anyOf>::is_validate_complete(const json &, const json::json_pointer &, error_handler &, const first_error_handler &, size_t count)
+bool logical_combination<anyOf>::is_validate_complete(const json &, const json::json_pointer &, error_handler &, const logical_error_handler &esub, size_t count)
 {
-	return count == 1;
+	return esub && count == 1;
 }
 
 template <>
-bool logical_combination<oneOf>::is_validate_complete(const json &, const json::json_pointer &, error_handler &, const first_error_handler &, size_t count)
+bool logical_combination<oneOf>::is_validate_complete(const json &, const json::json_pointer &, error_handler &, const logical_error_handler &esub, size_t count)
 {
-	return count > 1;
+	return esub && count > 1;
 }
 
 class type_schema : public schema
@@ -520,7 +524,7 @@ class type_schema : public schema
 			l->validate(ptr, instance, patch, e);
 
 		if (if_) {
-			first_error_handler err;
+			basic_error_handler err;
 
 			if_->validate(ptr, instance, patch, err);
 			if (!err) {
@@ -995,10 +999,16 @@ class object : public schema
 
 			// check additionalProperties as a last resort
 			if (!a_prop_or_pattern_matched && additionalProperties_) {
-				first_error_handler additional_prop_err;
-				additionalProperties_->validate(ptr / p.key(), p.value(), patch, additional_prop_err);
-				if (additional_prop_err)
-					e.error(ptr, instance, error_descriptor::object_additional_property_failed, std::tuple<error_descriptor, std::any, std::string>{additional_prop_err.type_, std::move(additional_prop_err.data_), p.key()});
+				logical_error_handler additional_prop_err;
+				auto subptr = ptr / p.key();
+				additionalProperties_->validate(subptr, p.value(), patch, additional_prop_err);
+
+				if (additional_prop_err) {
+					for (auto& esub : additional_prop_err.errors_) {
+						e.error(ptr, instance, error_descriptor::object_additional_property_failed, std::tuple<error_descriptor, std::any, std::string>{esub.type, std::move(esub.data), p.key()});
+					}
+					additional_prop_err.errors_.clear();
+				}
 			}
 		}
 
@@ -1158,12 +1168,14 @@ class array : public schema
 		if (contains_) {
 			bool contained = false;
 			for (auto &item : instance) {
-				first_error_handler local_e;
+				logical_error_handler local_e;
 				contains_->validate(ptr, item, patch, local_e);
 				if (!local_e) {
 					contained = true;
 					break;
 				}
+
+				local_e.get_errors(ptr.back(), e);
 			}
 			if (!contained)
 				e.error(ptr, instance, error_descriptor::array_does_not_contain_required_element_per_contains);
