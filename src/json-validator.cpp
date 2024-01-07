@@ -1348,6 +1348,9 @@ std::string json_schema::error_descriptor_type_to_string(const error_descriptor 
 	case error_descriptor::logical_not:
 		return "the subschema has succeeded, but it is required to not validate";
 
+	case error_descriptor::logical_combination:
+		break;
+
 	case error_descriptor::logical_combination_all_of: {
 		auto msg = std::any_cast<std::pair<error_descriptor, std::any>>(data);
 		return "at least one subschema has failed, but all of them are required to validate - " + error_descriptor_type_to_string(msg.first, std::move(msg.second));
