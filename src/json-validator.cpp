@@ -330,10 +330,6 @@ public:
 
 	void error(const json::json_pointer &ptr, const json &instance, const error_descriptor type, std::any data = std::any{}) override
 	{
-		for (auto& error : errors_) {
-			if (error.instance == instance)
-				return;
-		}
 		errors_.push_back(error_data{ptr, instance, type, std::move(data),});
 	}
 
@@ -400,32 +396,34 @@ class logical_combination : public schema
 
 	void validate(const json::json_pointer &ptr, const json &instance, json_patch &patch, error_handler &e) const final
 	{
-		size_t count = 0;
+		size_t valid_count = 0;
 
 		logical_error_handler local_errors;
 
-		for (auto &s : subschemata_) {
-			s->validate(ptr, instance, patch, local_errors);
-			if (!local_errors)
-				count++;
+		size_t schema_count = subschemata_.size();
 
-			if (is_validate_complete(instance, ptr, e, local_errors, count))
-				return;
+		for (auto &s : subschemata_) {
+			size_t error_count = local_errors.errors_.size();
+			s->validate(ptr, instance, patch, local_errors);
+
+			if (local_errors.errors_.size() == error_count)
+				valid_count++;
+
+				if (is_validate_complete(valid_count, schema_count))
+					return;
 		}
 
-		// Attempt to return the error if the last ref token is different from this one (ie. an inner object node)
-		if (count == 0 && local_errors)
+		// Give the local errors to the main error handler
+		if (local_errors)
 			local_errors.get_errors(ptr.back(), e);
 
-		// Otherwise return the descriptor if errored
-		if (count == 0)
-			e.error(ptr, instance, descriptor);
+		e.error(ptr, instance, descriptor);
 	}
 
 	// specialized for each of the logical_combination_types
 	static const std::string key;
 	static const error_descriptor descriptor;
-	static bool is_validate_complete(const json &, const json::json_pointer &, error_handler &, const logical_error_handler &, size_t);
+	static bool is_validate_complete(size_t valid_count, size_t schema_count);
 
 public:
 	logical_combination(json &sch,
@@ -436,9 +434,6 @@ public:
 		size_t c = 0;
 		for (auto &subschema : sch)
 			subschemata_.push_back(schema::make(subschema, root, {key, std::to_string(c++)}, uris));
-
-		// value of allOf, anyOf, and oneOf "MUST be a non-empty array"
-		// TODO error/throw? when subschemata_.empty()
 	}
 };
 
@@ -457,21 +452,21 @@ template <>
 const error_descriptor logical_combination<oneOf>::descriptor = error_descriptor::logical_combination_one_of;
 
 template <>
-bool logical_combination<allOf>::is_validate_complete(const json &, const json::json_pointer &, error_handler &, const logical_error_handler &esub, size_t)
+bool logical_combination<allOf>::is_validate_complete(size_t valid_count, size_t schema_count)
 {
-	return esub;
+	return valid_count == schema_count;
 }
 
 template <>
-bool logical_combination<anyOf>::is_validate_complete(const json &, const json::json_pointer &, error_handler &, const logical_error_handler &esub, size_t count)
+bool logical_combination<anyOf>::is_validate_complete(size_t valid_count, size_t)
 {
-	return esub && count == 1;
+	return valid_count >= 1;
 }
 
 template <>
-bool logical_combination<oneOf>::is_validate_complete(const json &, const json::json_pointer &, error_handler &, const logical_error_handler &esub, size_t count)
+bool logical_combination<oneOf>::is_validate_complete(size_t valid_count, size_t)
 {
-	return esub && count > 1;
+	return valid_count == 1;
 }
 
 class type_schema : public schema
