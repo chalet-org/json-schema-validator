@@ -409,8 +409,8 @@ class logical_combination : public schema
 			if (local_errors.errors_.size() == error_count)
 				valid_count++;
 
-				if (is_validate_complete(valid_count, schema_count))
-					return;
+			if (is_validate_complete(valid_count, schema_count))
+				return;
 		}
 
 		// Give the local errors to the main error handler
