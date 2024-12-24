@@ -340,12 +340,12 @@ public:
 			if (last_ref_token == esub.ptr.back() && !is_array)
 				continue;
 
-			if (is_array && esub.instance.empty()) {
-				// Assume we got here because the array in the error was empty and shouldn't have been
-				e.error(esub.ptr, esub.instance, error_descriptor::array_required_not_empty);
-			} else if (!is_array) {
+			// if (is_array && esub.instance.empty()) {
+			// 	// Assume we got here because the array in the error was empty and shouldn't have been
+			// 	e.error(esub.ptr, esub.instance, error_descriptor::array_required_not_empty);
+			// } else if (!is_array) {
 				e.error(esub.ptr, esub.instance, esub.type, std::move(esub.data));
-			}
+			// }
 		}
 		errors_.clear();
 	}
@@ -393,9 +393,12 @@ template <enum logical_combination_types combine_logic>
 class logical_combination : public schema
 {
 	std::vector<std::shared_ptr<schema>> subschemata_;
+	mutable bool validated_ = false;
 
 	void validate(const json::json_pointer &ptr, const json &instance, json_patch &patch, error_handler &e) const final
 	{
+		if (validated_) return;
+
 		size_t valid_count = 0;
 
 		logical_error_handler local_errors;
@@ -418,6 +421,7 @@ class logical_combination : public schema
 			local_errors.get_errors(ptr.back(), e);
 
 		e.error(ptr, instance, descriptor);
+		validated_ = true;
 	}
 
 	// specialized for each of the logical_combination_types
